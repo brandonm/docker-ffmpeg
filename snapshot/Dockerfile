@@ -1,6 +1,6 @@
 ###############################
 # Build the FFmpeg-build image.
-FROM alpine:3.8 as build
+FROM alpine:edge as build
 
 ARG FFMPEG_VERSION=ffmpeg-snapshot.tar.bz2
 ARG AOM_VERSION=master
@@ -14,6 +14,8 @@ ARG MAKEFLAGS="-j4"
 RUN apk add --update \
   build-base \
   cmake \
+  coreutils \
+  openssl-dev \
   freetype-dev \
   lame-dev \
   libogg-dev \
@@ -91,8 +93,8 @@ RUN rm -rf /var/cache/apk/* /tmp/*
 
 ##########################
 # Build the release image.
-FROM alpine:3.8
-LABEL MAINTAINER Alfred Gutierrez <alf.g.jr@gmail.com>
+FROM alpine:edge
+LABEL MAINTAINER brandonm
 ENV PATH=/opt/ffmpeg/bin:$PATH
 
 RUN apk add --update \
