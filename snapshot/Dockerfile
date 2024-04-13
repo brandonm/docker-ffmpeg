@@ -1,6 +1,7 @@
 ###############################
 # Build the FFmpeg-build image.
-FROM alpine:3.13 as build
+#FROM alpine:edge as build
+FROM alpine:3.19 AS build
 
 ARG FFMPEG_VERSION=ffmpeg-snapshot.tar.bz2
 ARG AOM_VERSION=master
@@ -11,9 +12,11 @@ ARG LD_LIBRARY_PATH=/opt/ffmpeg/lib
 ARG MAKEFLAGS="-j4"
 
 # FFmpeg build dependencies.
-RUN apk add --update \
+RUN apk --no-cache add \
   build-base \
   cmake \
+  coreutils \
+  openssl-dev \
   freetype-dev \
   lame-dev \
   libogg-dev \
@@ -25,11 +28,10 @@ RUN apk add --update \
   libtheora-dev \
   libtool \
   opus-dev \
-  openssl \
-  openssl-dev \
   perl \
   pkgconf \
   pkgconfig \
+  python3 \
   rtmpdump-dev \
   wget \
   x264-dev \
@@ -37,31 +39,33 @@ RUN apk add --update \
   yasm
 
 # Install fdk-aac from testing.
-RUN echo http://dl-cdn.alpinelinux.org/alpine/edge/community >> /etc/apk/repositories && \
-  apk add --update fdk-aac-dev
-
-# Get rav1e from testing.
 RUN echo http://dl-cdn.alpinelinux.org/alpine/edge/testing >> /etc/apk/repositories && \
-  apk add --update rav1e-dev
+  apk add --no-cache fdk-aac-dev
+
+RUN mkdir -p /tmp/aom
+WORKDIR /tmp
 
 # Build libaom for av1.
-RUN mkdir -p /tmp/aom && cd /tmp/ && \
-  wget https://aomedia.googlesource.com/aom/+archive/${AOM_VERSION}.tar.gz && \
-  tar zxf ${AOM_VERSION}.tar.gz && rm ${AOM_VERSION}.tar.gz && \
-  rm -rf CMakeCache.txt CMakeFiles && \
-  mkdir -p ./aom_build && \
-  cd ./aom_build && \
-  cmake -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DBUILD_SHARED_LIBS=1 .. && \
-  make && make install
+RUN wget https://aomedia.googlesource.com/aom/+archive/${AOM_VERSION}.tar.gz && \
+    tar zxf ${AOM_VERSION}.tar.gz && rm ${AOM_VERSION}.tar.gz && \
+    rm -rf CMakeCache.txt CMakeFiles && \
+    mkdir -p ./aom_build && \
+    cd ./aom_build && \
+    cmake -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DBUILD_SHARED_LIBS=1 .. && \
+    make && \
+    make install && \
+    make clean
+
+WORKDIR /tmp
 
 # Get ffmpeg source.
-RUN cd /tmp/ && \
-  wget https://ffmpeg.org/releases/${FFMPEG_VERSION} && \
-  tar xjvf ${FFMPEG_VERSION} && rm ${FFMPEG_VERSION}
+RUN wget https://ffmpeg.org/releases/${FFMPEG_VERSION}
+RUN tar xjvf ${FFMPEG_VERSION} && rm ${FFMPEG_VERSION}
+
+WORKDIR /tmp/ffmpeg
 
 # Compile ffmpeg.
-RUN cd /tmp/ffmpeg && \
-  ./configure \
+RUN ./configure \
   --enable-version3 \
   --enable-gpl \
   --enable-nonfree \
@@ -78,7 +82,6 @@ RUN cd /tmp/ffmpeg && \
   --enable-libass \
   --enable-libwebp \
   --enable-librtmp \
-  --enable-librav1e \
   --enable-postproc \
   --enable-libfreetype \
   --enable-openssl \
@@ -89,18 +92,20 @@ RUN cd /tmp/ffmpeg && \
   --extra-ldflags="-L${PREFIX}/lib" \
   --extra-libs="-lpthread -lm" \
   --prefix="${PREFIX}" && \
-  make && make install && make distclean
+    make && \
+    make install && \
+    make distclean
 
 # Cleanup.
 RUN rm -rf /var/cache/apk/* /tmp/*
 
 ##########################
 # Build the release image.
-FROM alpine:3.13
-LABEL MAINTAINER Alfred Gutierrez <alf.g.jr@gmail.com>
+FROM alpine:3.19
+
 ENV PATH=/opt/ffmpeg/bin:$PATH
 
-RUN apk add --update \
+RUN apk --no-cache add \
   ca-certificates \
   openssl \
   pcre \
@@ -117,8 +122,7 @@ RUN apk add --update \
   x265-dev
 
 COPY --from=build /opt/ffmpeg /opt/ffmpeg
+COPY --from=build /opt/ffmpeg/lib64/libaom.so* /usr/lib/
 COPY --from=build /usr/lib/libfdk-aac.so.2 /usr/lib/libfdk-aac.so.2
-COPY --from=build /usr/lib/librav1e.so /usr/lib/librav1e.so
-COPY --from=build /opt/ffmpeg/lib64/libaom.so.3 /usr/lib/libaom.so.3
 
 CMD ["/opt/ffmpeg/bin/ffmpeg"]

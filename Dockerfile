@@ -1,19 +1,20 @@
 ###############################
 # Build the FFmpeg-build image.
-FROM alpine:3.16.0 as build
+FROM alpine:3.19 AS build
 
-ARG FFMPEG_VERSION=5.0
+ARG FFMPEG_VERSION=7.0
 
 ARG PREFIX=/opt/ffmpeg
 ARG LD_LIBRARY_PATH=/opt/ffmpeg/lib
 ARG MAKEFLAGS="-j4"
 
 # FFmpeg build dependencies.
-RUN apk add --update \
+RUN apk --no-cache add \
   build-base \
-  coreutils \
   freetype-dev \
   gcc \
+  coreutils \
+  openssl-dev \
   lame-dev \
   libogg-dev \
   libass \
@@ -23,8 +24,6 @@ RUN apk add --update \
   libwebp-dev \
   libtheora-dev \
   opus-dev \
-  openssl \
-  openssl-dev \
   pkgconf \
   pkgconfig \
   rtmpdump-dev \
@@ -33,22 +32,20 @@ RUN apk add --update \
   x265-dev \
   yasm
 
-# Get fdk-aac from community.
-RUN echo http://dl-cdn.alpinelinux.org/alpine/edge/community >> /etc/apk/repositories && \
-  apk add --update fdk-aac-dev
-
-# Get rav1e from testing.
+# Get fdk-aac from testing.
 RUN echo http://dl-cdn.alpinelinux.org/alpine/edge/testing >> /etc/apk/repositories && \
-  apk add --update rav1e-dev
+  apk add --no-cache fdk-aac-dev
+
+WORKDIR /tmp
 
 # Get ffmpeg source.
-RUN cd /tmp/ && \
-  wget http://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz && \
+RUN wget http://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz && \
   tar zxf ffmpeg-${FFMPEG_VERSION}.tar.gz && rm ffmpeg-${FFMPEG_VERSION}.tar.gz
 
+WORKDIR /tmp/ffmpeg-${FFMPEG_VERSION}
+
 # Compile ffmpeg.
-RUN cd /tmp/ffmpeg-${FFMPEG_VERSION} && \
-  ./configure \
+RUN ./configure \
   --enable-version3 \
   --enable-gpl \
   --enable-nonfree \
@@ -64,7 +61,6 @@ RUN cd /tmp/ffmpeg-${FFMPEG_VERSION} && \
   --enable-libass \
   --enable-libwebp \
   --enable-librtmp \
-  --enable-librav1e \
   --enable-postproc \
   --enable-libfreetype \
   --enable-openssl \
@@ -74,19 +70,21 @@ RUN cd /tmp/ffmpeg-${FFMPEG_VERSION} && \
   --extra-cflags="-I${PREFIX}/include" \
   --extra-ldflags="-L${PREFIX}/lib" \
   --extra-libs="-lpthread -lm" \
-  --prefix="${PREFIX}" && \
-  make && make install && make distclean
+  --prefix="${PREFIX}" &&  \
+    make &&  \
+    make install && \
+    make distclean
 
 # Cleanup.
 RUN rm -rf /var/cache/apk/* /tmp/*
 
 ##########################
 # Build the release image.
-FROM alpine:3.16.0
-LABEL MAINTAINER Alfred Gutierrez <alf.g.jr@gmail.com>
+FROM alpine:3.19
+
 ENV PATH=/opt/ffmpeg/bin:$PATH
 
-RUN apk add --update \
+RUN apk --no-cache add \
   ca-certificates \
   openssl \
   pcre \
@@ -104,6 +102,5 @@ RUN apk add --update \
 
 COPY --from=build /opt/ffmpeg /opt/ffmpeg
 COPY --from=build /usr/lib/libfdk-aac.so.2 /usr/lib/libfdk-aac.so.2
-COPY --from=build /usr/lib/librav1e.so /usr/lib/librav1e.so
 
 CMD ["/usr/local/bin/ffmpeg"]
