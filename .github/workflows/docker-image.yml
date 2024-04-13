@@ -33,7 +33,7 @@ jobs:
           tags: brandmar/ffmpeg:latest
 
   ffmpeg_snapshot:
-    name: Push Docker image to Docker Hub
+    name: Push Snapshot Docker image to Docker Hub
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repo
